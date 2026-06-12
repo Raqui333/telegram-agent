@@ -10,14 +10,14 @@ class FeedbackToolCall(AgentMiddleware):
 
         ctx: dict = request.runtime.context
 
-        chat_bot = ctx.get("chat_bot", None)
         chat_id = ctx.get("chat_id", None)
+        telegram_bot_client = ctx.get("telegram_bot_client", None)
 
-        if not chat_bot or not chat_id:
+        if not telegram_bot_client or not chat_id:
             return await handler(request)
 
         try:
-            await chat_bot.send_message(
+            await telegram_bot_client.send_message(
                 chat_id=chat_id,
                 text=f"⚙️ *Using tool*: `{tool_name}`",
                 parse_mode=ParseMode.MARKDOWN_V2,

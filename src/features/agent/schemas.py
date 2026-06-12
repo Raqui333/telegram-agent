@@ -1,6 +1,7 @@
+from typing_extensions import TypedDict
 from telegram import Bot
 
-
-class ContextSchema:
-    chat_bot: Bot
+class Context(TypedDict):
+    user_name: str
     chat_id: int
+    telegram_bot_client: Bot
