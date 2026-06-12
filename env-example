@@ -8,6 +8,9 @@ TELEGRAM_BOT_TOKEN="..."
 OPENAI_API_KEY="..."
 TAVILY_API_KEY="..."
 
+# Embedding model in the format provider:model
+EMBEDDING_MODEL="openai:text-embedding-3-small"
+
 # Langsmith (Optional)
 #LANGSMITH_TRACING=
 #LANGSMITH_ENDPOINT=

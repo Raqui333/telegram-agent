@@ -1,14 +1,18 @@
 from dotenv import load_dotenv
 from typing import Any
-from telegram import Bot
 
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from langchain.embeddings import init_embeddings
+from langgraph.store.postgres.aio import AsyncPostgresStore
+
 from langchain_core.messages import HumanMessage
 
 from src.features.shared.logging import logger
 
 from .graph import build_graph
+from .schemas import Context
 from .config import Settings
 
 load_dotenv()
@@ -38,32 +42,48 @@ def log_token_usage(last_message: dict[str, Any], chat_id: int):
     )
 
 
-async def agent(message: str, chat_bot: Bot, chat_id: int, user_name: str):
+async def agent(context: Context, text: str):
     async with AsyncPostgresSaver.from_conn_string(DATABASE_URL) as checkpointer:
-        await checkpointer.setup()
-
-        agent = build_graph(
-            model,
-            checkpointer,
-        )
-
-        response = await agent.ainvoke(
-            {
-                "messages": [
-                    HumanMessage(content=f"My name is {user_name}\n\n{message}"),
-                ]
+        async with AsyncPostgresStore.from_conn_string(
+            DATABASE_URL,
+            index={
+                "embed": init_embeddings(settings.embedding_model),
+                "dims": 1536,
+                "fields": ["$"],
             },
-            config={"configurable": {"thread_id": str(chat_id)}},
-            context={"chat_bot": chat_bot, "chat_id": chat_id},
-        )
+        ) as store:
+            await checkpointer.setup()
+            await store.setup()
 
-        messages = response.get("messages", [])
+            agent = build_graph(
+                model,
+                checkpointer,
+                store,
+            )
 
-        if not messages:
-            logger.warning(f'Agent returned no messages: chat_id="{chat_id}"')
-            return None
+            llm_input = {
+                "messages": [
+                    HumanMessage(
+                        content=f"My name is {context["user_name"]}\n\n{text}"
+                    ),
+                ]
+            }
 
-        last_message = messages[-1]
-        log_token_usage(last_message, chat_id)
+            response = await agent.ainvoke(
+                input=llm_input,
+                context=context,
+                config={"configurable": {"thread_id": str(context["chat_id"])}},
+            )
 
-        return last_message.content
+            messages = response.get("messages", [])
+
+            if not messages:
+                logger.warning(
+                    f'Agent returned no messages: chat_id="{context["chat_id"]}"'
+                )
+                return None
+
+            last_message = messages[-1]
+            log_token_usage(last_message, context["chat_id"])
+
+            return last_message.content

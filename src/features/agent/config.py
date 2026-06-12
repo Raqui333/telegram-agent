@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: SecretStr
 
     openai_model: str = "gpt-4o-mini"
+    embedding_model: str = "openai:text-embedding-3-small"
 
     tavily_api_key: SecretStr
 
