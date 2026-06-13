@@ -1,13 +1,12 @@
 import logging
 
 from telegram import Update
-from telegram.ext import ContextTypes, MessageHandler, filters
+from telegram.ext import ContextTypes, MessageHandler, filters, Application
 
 from src.features.agent.executor import agent
 from src.features.shared.utils import typing
 from src.features.agent.schemas import Context
 
-from .client import TelegramClient
 from .utils import handle_llm_response
 
 logger = logging.getLogger(__name__)
@@ -52,19 +51,11 @@ async def handle_unsupported_media(update: Update, context: ContextTypes.DEFAULT
     await message.reply_text("Desculpe, eu não suporto esse tipo de mídia ainda. 😔")
 
 
-def executor():
-    client = TelegramClient()
+def register_handlers(app: Application):
+    # Text messages
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    client.bot.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
-
-    client.bot.add_handler(
+    # Unsupported media
+    app.add_handler(
         MessageHandler(~filters.TEXT & ~filters.COMMAND, handle_unsupported_media)
     )
-
-    client.start()
-
-
-if __name__ == "__main__":
-    executor()
