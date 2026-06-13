@@ -1,23 +1,21 @@
+import logging
+
 from dotenv import load_dotenv
 from typing import Any
 
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-from langchain.embeddings import init_embeddings
-from langgraph.store.postgres.aio import AsyncPostgresStore
-
 from langchain_core.messages import HumanMessage
 
-from src.features.shared.logging import logger
+from src.services.langgraph_persistence.client import langgraph_persistence_client
 
 from .graph import build_graph
 from .schemas import Context
 from .config import Settings
 
-load_dotenv()
-
+logger = logging.getLogger(__name__)
 settings = Settings()
+
+load_dotenv()
 
 DATABASE_URL = settings.database_url.get_secret_value()
 
@@ -43,47 +41,39 @@ def log_token_usage(last_message: dict[str, Any], chat_id: int):
 
 
 async def agent(context: Context, text: str):
-    async with AsyncPostgresSaver.from_conn_string(DATABASE_URL) as checkpointer:
-        async with AsyncPostgresStore.from_conn_string(
-            DATABASE_URL,
-            index={
-                "embed": init_embeddings(settings.embedding_model),
-                "dims": 1536,
-                "fields": ["$"],
-            },
-        ) as store:
-            await checkpointer.setup()
-            await store.setup()
+    try:
+        checkpointer, store = langgraph_persistence_client.get_instance()
 
-            agent = build_graph(
-                model,
-                checkpointer,
-                store,
+        agent = build_graph(
+            model,
+            checkpointer,
+            store,
+        )
+
+        llm_input = {
+            "messages": [
+                HumanMessage(content=f"My name is {context["user_name"]}\n\n{text}"),
+            ]
+        }
+
+        response = await agent.ainvoke(
+            input=llm_input,
+            context=context,
+            config={"configurable": {"thread_id": str(context["chat_id"])}},
+        )
+
+        messages = response.get("messages", [])
+
+        if not messages:
+            logger.warning(
+                f'Agent returned no messages: chat_id="{context["chat_id"]}"'
             )
+            return None
 
-            llm_input = {
-                "messages": [
-                    HumanMessage(
-                        content=f"My name is {context["user_name"]}\n\n{text}"
-                    ),
-                ]
-            }
+        last_message = messages[-1]
+        log_token_usage(last_message, context["chat_id"])
 
-            response = await agent.ainvoke(
-                input=llm_input,
-                context=context,
-                config={"configurable": {"thread_id": str(context["chat_id"])}},
-            )
-
-            messages = response.get("messages", [])
-
-            if not messages:
-                logger.warning(
-                    f'Agent returned no messages: chat_id="{context["chat_id"]}"'
-                )
-                return None
-
-            last_message = messages[-1]
-            log_token_usage(last_message, context["chat_id"])
-
-            return last_message.content
+        return last_message.content
+    except Exception as e:
+        logger.error(f"Error in agent: {e}")
+        return "Não consegui processar sua mensagem. 😔"
