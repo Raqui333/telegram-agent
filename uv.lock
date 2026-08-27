@@ -2380,7 +2380,7 @@ wheels = [
 ]
 
 [[package]]
-name = "thoth-agent"
+name = "telegram-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
